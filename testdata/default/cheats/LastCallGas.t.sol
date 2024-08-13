@@ -58,6 +58,10 @@ abstract contract LastCallGasFixture is DSTest {
         target.resetValue();
     }
 
+    function _performExpandMemory() internal {
+        target.expandMemory(1000);
+    }
+
     function _assertGas(Vm.Gas memory lhs, Gas memory rhs) internal {
         assertGt(lhs.gasLimit, 0);
         assertGt(lhs.gasRemaining, 0);
@@ -78,6 +82,9 @@ contract LastCallGasIsolatedTest is LastCallGasFixture {
 
         _performCall();
         _assertGas(vm.lastCallGas(), Gas({gasTotalUsed: 21064, gasMemoryUsed: 0, gasRefunded: 0}));
+
+        _performExpandMemory();
+        _assertGas(vm.lastCallGas(), Gas({gasTotalUsed: 0, gasMemoryUsed: 0, gasRefunded: 0}));
     }
 
     function testRecordGasRefund() public {

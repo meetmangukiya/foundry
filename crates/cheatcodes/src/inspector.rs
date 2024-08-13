@@ -319,6 +319,8 @@ pub struct Cheatcodes {
 
     /// Optional RNG algorithm.
     rng: Option<StdRng>,
+    /// Current call's memory expansion cost.
+    current_expansion_cost: u64,
 }
 
 // This is not derived because calling this in `fn new` with `..Default::default()` creates a second
@@ -361,6 +363,7 @@ impl Cheatcodes {
             pc: Default::default(),
             breakpoints: Default::default(),
             rng: Default::default(),
+            current_expansion_cost: Default::default(),
         }
     }
 
@@ -943,6 +946,7 @@ impl Cheatcodes {
 impl<DB: DatabaseExt> Inspector<DB> for Cheatcodes {
     #[inline]
     fn initialize_interp(&mut self, _interpreter: &mut Interpreter, ecx: &mut EvmContext<DB>) {
+        eprintln!("initialize interp");
         // When the first interpreter is initialized we've circumvented the balance and gas checks,
         // so we apply our actual block data with the correct fees and all.
         if let Some(block) = self.block.take() {
@@ -955,6 +959,7 @@ impl<DB: DatabaseExt> Inspector<DB> for Cheatcodes {
 
     #[inline]
     fn step(&mut self, interpreter: &mut Interpreter, ecx: &mut EvmContext<DB>) {
+        eprintln!("step ");
         self.pc = interpreter.program_counter();
 
         // `pauseGasMetering`: reset interpreter gas.
@@ -980,6 +985,18 @@ impl<DB: DatabaseExt> Inspector<DB> for Cheatcodes {
         // `startMappingRecording`: record SSTORE and KECCAK256.
         if let Some(mapping_slots) = &mut self.mapping_slots {
             mapping::step(mapping_slots, interpreter);
+        }
+    }
+
+    #[inline]
+    fn step_end(&mut self, interp: &mut Interpreter, _context: &mut EvmContext<DB>) {
+        eprintln!("step end: {:?}", interp.instruction_pointer);
+        if interp.instruction_result != InstructionResult::Continue {
+            eprintln!(
+                "setting current_expansion_cost: {}",
+                interp.shared_memory.current_expansion_cost()
+            );
+            self.current_expansion_cost = interp.shared_memory.current_expansion_cost();
         }
     }
 
@@ -1102,7 +1119,7 @@ impl<DB: DatabaseExt> Inspector<DB> for Cheatcodes {
         self.last_call_gas = Some(crate::Vm::Gas {
             gasLimit: gas.limit(),
             gasTotalUsed: gas.spent(),
-            gasMemoryUsed: 0,
+            gasMemoryUsed: self.current_expansion_cost,
             gasRefunded: gas.refunded(),
             gasRemaining: gas.remaining(),
         });
